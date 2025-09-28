@@ -1,5 +1,4 @@
 name: Pipeline Profiler
-
 on:
   workflow_run:
     workflows: ["CI/CD Pipeline"]
@@ -15,78 +14,182 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download workflow artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/github-script@v7
         with:
-          name: build-artifacts
-          path: dist/
-          run-id: ${{ github.event.workflow_run.id }}
-
-      - name: Download test results
-        uses: actions/download-artifact@v4
-        with:
-          name: test-results
-          path: .
-          run-id: ${{ github.event.workflow_run.id }}
-
-      - name: Download build log
-        uses: actions/download-artifact@v4
-        with:
-          name: build-log
-          path: .
-          run-id: ${{ github.event.workflow_run.id }}
-
+          script: |
+            const fs = require('fs');
+            
+            // Get all artifacts from the triggering workflow run
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
+            
+            console.log(`Found ${artifacts.data.artifacts.length} artifacts`);
+            
+            // Download each artifact
+            for (const artifact of artifacts.data.artifacts) {
+              console.log(`Downloading artifact: ${artifact.name}`);
+              
+              try {
+                const download = await github.rest.actions.downloadArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                  archive_format: 'zip',
+                });
+                
+                fs.writeFileSync(`${artifact.name}.zip`, Buffer.from(download.data));
+                console.log(`Downloaded: ${artifact.name}.zip`);
+              } catch (error) {
+                console.log(`Failed to download ${artifact.name}: ${error.message}`);
+              }
+            }
+      
+      - name: Extract artifacts
+        run: |
+          # Create directories and extract artifacts
+          mkdir -p dist
+          
+          # Extract build artifacts if they exist
+          if [ -f "build-artifacts.zip" ]; then
+            unzip -o build-artifacts.zip -d dist/
+            echo "Extracted build artifacts"
+          else
+            echo "No build artifacts found"
+          fi
+          
+          # Extract test results if they exist
+          if [ -f "test-results.zip" ]; then
+            unzip -o test-results.zip
+            echo "Extracted test results"
+          else
+            echo "No test results found"
+          fi
+          
+          # Extract build log if it exists
+          if [ -f "build-log.zip" ]; then
+            unzip -o build-log.zip
+            echo "Extracted build log"
+          else
+            echo "No build log found"
+          fi
+          
+          # List what we have
+          echo "Files in current directory:"
+          ls -la
+          echo "Files in dist directory:"
+          ls -la dist/ || echo "No dist directory"
+      
       - name: Analyze workflow run
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-
+            
+            // Get workflow run details
             const response = await github.rest.actions.getWorkflowRun({
               owner: context.repo.owner,
               repo: context.repo.repo,
               run_id: context.payload.workflow_run.id,
             });
-
+            
+            // Get job details
             const jobs = await github.rest.actions.listJobsForWorkflowRun({
               owner: context.repo.owner,
               repo: context.repo.repo,
               run_id: context.payload.workflow_run.id,
             });
-
+            
+            // Build the summary
             let summary = `## Pipeline Profile for Workflow Run #${response.data.run_number}\n\n`;
             summary += `**Status:** ${response.data.conclusion}\n`;
-            summary += `**Duration:** ${new Date(response.data.updated_at).getTime() - new Date(response.data.created_at).getTime()}ms\n\n`;
-
+            summary += `**Trigger:** ${response.data.event}\n`;
+            summary += `**Branch:** ${response.data.head_branch}\n`;
+            
+            // Calculate total duration
+            const startTime = new Date(response.data.created_at).getTime();
+            const endTime = new Date(response.data.updated_at).getTime();
+            const totalDuration = Math.round((endTime - startTime) / 1000); // Convert to seconds
+            summary += `**Total Duration:** ${totalDuration}s\n\n`;
+            
+            // Job details table
+            summary += '### Job Performance\n';
             summary += '| Job | Duration | Status |\n';
             summary += '| --- | --- | --- |\n';
-
+            
             for (const job of jobs.data.jobs) {
-              const duration = new Date(job.completed_at).getTime() - new Date(job.started_at).getTime();
-              summary += `| ${job.name} | ${duration}ms | ${job.conclusion} |\n`;
+              if (job.started_at && job.completed_at) {
+                const jobStart = new Date(job.started_at).getTime();
+                const jobEnd = new Date(job.completed_at).getTime();
+                const duration = Math.round((jobEnd - jobStart) / 1000); // Convert to seconds
+                summary += `| ${job.name} | ${duration}s | ${job.conclusion} |\n`;
+              } else {
+                summary += `| ${job.name} | N/A | ${job.conclusion} |\n`;
+              }
             }
-
+            
+            // Test results section
             summary += '\n### Test Summary\n';
-
             try {
               const testResults = JSON.parse(fs.readFileSync('test-results.json', 'utf8'));
-              summary += `**Tests Passed:** ${testResults.numPassedTests}\n`;
-              summary += `**Tests Failed:** ${testResults.numFailedTests}\n`;
-              summary += `**Total Tests:** ${testResults.numTotalTests}\n`;
+              summary += `**Tests Passed:** ${testResults.numPassedTests || 0}\n`;
+              summary += `**Tests Failed:** ${testResults.numFailedTests || 0}\n`;
+              summary += `**Total Tests:** ${testResults.numTotalTests || 0}\n`;
+              summary += `**Test Suites:** ${testResults.numTotalTestSuites || 0}\n`;
             } catch (error) {
-              summary += 'Could not read test results.\n';
+              summary += 'Test results not available or could not be parsed.\n';
+              console.log(`Test results error: ${error.message}`);
             }
-
-            summary += '\n### Cache Summary\n';
-
+            
+            // Build log analysis
+            summary += '\n### Build Analysis\n';
             try {
               const buildLog = fs.readFileSync('build-log.txt', 'utf8');
-              if (buildLog.includes('Cache hit for key')) {
-                summary += '**Cache Hit:** Yes\n';
+              
+              // Check for cache hits
+              if (buildLog.includes('cache hit') || buildLog.includes('Cache hit')) {
+                summary += '**Cache Status:** Hit ✅\n';
+              } else if (buildLog.includes('cache miss') || buildLog.includes('Cache miss')) {
+                summary += '**Cache Status:** Miss ❌\n';
               } else {
-                summary += '**Cache Hit:** No\n';
+                summary += '**Cache Status:** Unknown\n';
               }
+              
+              // Check build size (if dist directory exists)
+              try {
+                const { execSync } = require('child_process');
+                const buildSize = execSync('du -sh dist/ 2>/dev/null || echo "0B unknown"').toString().trim();
+                summary += `**Build Size:** ${buildSize.split('\t')[0]}\n`;
+              } catch (e) {
+                summary += '**Build Size:** Unknown\n';
+              }
+              
             } catch (error) {
-              summary += 'Could not read build log.\n';
+              summary += 'Build log not available.\n';
+              console.log(`Build log error: ${error.message}`);
             }
-
-            core.summary.addRaw(summary).write();
+            
+            // Artifact information
+            summary += '\n### Artifacts\n';
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
+            
+            if (artifacts.data.artifacts.length > 0) {
+              summary += '| Name | Size | Status |\n';
+              summary += '| --- | --- | --- |\n';
+              for (const artifact of artifacts.data.artifacts) {
+                const sizeKB = Math.round(artifact.size_in_bytes / 1024);
+                summary += `| ${artifact.name} | ${sizeKB} KB | ${artifact.expired ? 'Expired' : 'Available'} |\n`;
+              }
+            } else {
+              summary += 'No artifacts found.\n';
+            }
+            
+            // Write the summary
+            await core.summary.addRaw(summary).write();
+            console.log('Pipeline profile summary created successfully!');
