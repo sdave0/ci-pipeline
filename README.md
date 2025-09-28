@@ -1,39 +1,27 @@
-# Tic-Tac-Toe
+# CI/CD Pipeline for a Containerized Web Application
 
-A classic Tic-Tac-Toe game built with React, TypeScript, and Tailwind CSS.
+## Overview
 
-## Features
+This repository contains a CI/CD pipeline for building, testing, and deploying a containerized React application to a Kubernetes cluster. The pipeline is implemented using GitHub Actions.
 
-*   Play Tic-Tac-Toe against another player.
-*   Keeps track of the score.
-*   Game history.
-*   Enter custom player names.
+## CI/CD Workflow
 
-## Getting Started
+The pipeline consists of the following jobs:
 
-### Prerequisites
+*   **Test & Lint:** Performs unit testing and static code analysis.
+*   **Build:** Creates a production build of the React application.
+*   **Docker Build & Push:** Builds and pushes a Docker image to the GitHub Container Registry, including a vulnerability scan with Trivy.
+*   **Deploy:** Updates the Kubernetes deployment with the new image tag upon pushes to the `main` branch.
 
-*   Node.js and npm installed.
+## Workflow Triggers
 
-### Installation
+*   **Push** to `main` or `develop`.
+*   **Pull Request** to `main` or `develop`.
 
-1.  Clone the repository.
-2.  Install the dependencies:
+## Technology Stack
 
-```bash
-npm install
-```
-
-### Running the application
-
-```bash
-npm run dev
-```
-
-This will start the development server at `http://localhost:5173`.
-
-### Running the tests
-
-```bash
-npm test
-```
+*   **CI/CD:** GitHub Actions
+*   **Containerization:** Docker
+*   **Orchestration:** Kubernetes
+*   **Frontend:** React, TypeScript
+*   **Security:** Trivy
