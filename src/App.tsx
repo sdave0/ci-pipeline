@@ -17,6 +17,7 @@ function App() {
   }>>([]);
   const [gameStatus, setGameStatus] = useState<'playing' | 'won' | 'draw'>('playing');
   const [winningLine, setWinningLine] = useState<number[] | null>(null);
+  const [playerNames, setPlayerNames] = useState({ X: 'Player X', O: 'Player O' });
 
   // Check for winner or draw
   useEffect(() => {
@@ -84,13 +85,17 @@ function App() {
   // Get current game status message
   const getStatusMessage = () => {
     if (gameStatus === 'won') {
-      const winner = !xIsNext ? 'X' : 'O';
-      return `Player ${winner} wins!`;
+      const winner = !xIsNext ? playerNames.X : playerNames.O;
+      return `${winner} wins!`;
     } else if (gameStatus === 'draw') {
       return "It's a draw!";
     } else {
-      return `Next player: ${xIsNext ? 'X' : 'O'}`;
+      return `Next player: ${xIsNext ? playerNames.X : playerNames.O}`;
     }
+  };
+
+  const handleNameChange = (player: 'X' | 'O', name: string) => {
+    setPlayerNames(prev => ({ ...prev, [player]: name }));
   };
 
   return (
@@ -136,7 +141,28 @@ function App() {
           
           {/* Stats section */}
           <div className="flex flex-col gap-6">
-            <ScoreBoard scores={scores} />
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-800 mb-3">Player Names</h2>
+              <div className="flex items-center mb-2">
+                <label className="w-12 font-medium text-indigo-600">Player X:</label>
+                <input 
+                  type="text" 
+                  value={playerNames.X} 
+                  onChange={(e) => handleNameChange('X', e.target.value)} 
+                  className="w-full p-1 border rounded"
+                />
+              </div>
+              <div className="flex items-center">
+                <label className="w-12 font-medium text-purple-600">Player O:</label>
+                <input 
+                  type="text" 
+                  value={playerNames.O} 
+                  onChange={(e) => handleNameChange('O', e.target.value)} 
+                  className="w-full p-1 border rounded"
+                />
+              </div>
+            </div>
+            <ScoreBoard scores={scores} playerNames={playerNames} />
             <GameHistory history={gameHistory} />
           </div>
         </div>
