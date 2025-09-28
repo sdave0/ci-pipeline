@@ -6,6 +6,9 @@ on:
     types:
       - completed
 
+permissions:
+  actions: read
+
 jobs:
   profile:
     runs-on: ubuntu-latest
