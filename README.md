@@ -13,6 +13,10 @@ The pipeline consists of the following jobs:
 *   **Docker Build & Push:** Builds and pushes a Docker image to the GitHub Container Registry, including a vulnerability scan with Trivy.
 *   **Deploy:** Updates the Kubernetes deployment with the new image tag upon pushes to the `main` branch.
 
+## Pipeline Profiler
+
+This project includes a separate workflow that profiles the main CI/CD pipeline. After every successful run of the CI/CD pipeline on the `main` branch, the profiler workflow runs and generates a summary of the pipeline's execution, including job durations, test results, and cache performance. The summary is appended to the CI/CD pipeline run.
+
 ## Workflow Triggers
 
 *   **Push** to `main` or `develop`.
@@ -25,3 +29,4 @@ The pipeline consists of the following jobs:
 *   **Orchestration:** Kubernetes
 *   **Frontend:** React, TypeScript
 *   **Security:** Trivy
+
